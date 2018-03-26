@@ -29,7 +29,7 @@ class Images(object):
         if self.ids is None:
             self.ids=ids
             self.features=pd.DataFrame(index=ids)
-        elif set(self.ids) != set(ids):
+        elif not set(self.ids).issubset(set(ids)) :
             raise ValueError('ids do not match')
 
     def read_images(self):
@@ -42,7 +42,6 @@ class Images(object):
             dims[n]=img.shape[:2]
             self.images[n]= resize(img, (self.height, self.width), mode='constant', preserve_range=True)
         sys.stdout.flush()
-
         self.features['size_x']=dims[:,0]
         self.features['size_y']=dims[:,1]
 
@@ -51,18 +50,21 @@ class Images(object):
         # adds images labeled and unlabeled masks
         # idea: better in original size?
         self.get_ids()
-        self.masks= []
         self.labeled_masks = np.zeros((len(self.ids),self.height, self.width, 1), dtype=np.uint)
+        self.masks = np.zeros((len(self.ids),self.height, self.width, 1), dtype=np.bool)
+        n_nuclei=np.zeros(len(self.ids), dtype=np.uint)
         sys.stdout.flush()
         for n, id_ in tqdm.tqdm(enumerate(self.ids), total=len(self.ids)):
-            self.masks.append([])
+            
             for k, mask_file in enumerate(next(os.walk(self.path + '/'+ id_ + '/masks/'))[2]):
                 #print(mask_file)
-                mask = scipy.misc.imread(self.path + '/' + id_ +  '/masks/' + mask_file)
+                mask = scipy.misc.imread(self.path + '/' + id_ +  '/masks/' + mask_file).astype(np.bool)
                 mask = np.expand_dims(resize(mask, (self.height, self.width), mode='constant',
-                                              preserve_range=True), axis=-1)
-                self.masks[n].append(mask)
-                self.labeled_masks = np.maximum(self.labeled_masks, mask * k) #assuming they are not overlaying
+                                              preserve_range=True), axis=-1).astype(np.bool)
+                self.masks[n] = np.maximum(self.masks[n], mask) 
+                self.labeled_masks[n] = np.maximum(self.labeled_masks[n], mask * (k+1)) #assuming they are not overlaying
+            n_nuclei[n]=k
+        self.features['n_nuclei']=n_nuclei
         sys.stdout.flush()
 
     def show_image(self, idx="random"):
@@ -72,8 +74,10 @@ class Images(object):
         elif idx == "bad":
             # select image with poor performance
             idx=0 #not implemented yet
-
-        plt.imshow(self.imags[idx])
+        print(self.features[idx:idx+1])
+        plt.imshow(self.images[idx])
+        plt.show()
+        plt.imshow(np.squeeze(self.masks[idx]))
         plt.show()
         plt.imshow(np.squeeze(self.labeled_masks[idx]))
         plt.show()
@@ -108,9 +112,14 @@ class Images(object):
 
 if __name__=='__main__':
 
-    test=Images()
-    print("reading test images")
-    test.read_images()
-    print("reading test masks")
-    test.read_masks()
-    test.show_image()
+    train=Images()
+    train.get_ids()
+    train.ids=train.ids[:10]
+    train.features=train.features[:10]
+    print("reading training images")
+    train.read_images()
+    print("reading training masks")
+    train.read_masks()
+    train.show_image()
+
+
