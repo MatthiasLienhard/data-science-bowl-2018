@@ -3,13 +3,13 @@
 
 ## Data type Conversions
 * images
-    * numpy array[n,x,y,3], dtype=uint8
+    * numpy array\[n,x,y,3\], dtype=uint8
     * n images of dim x\*y pixels, 3 color intensities
 * masks
-    * numpy array[n,x,y], dtype=bool
+    * numpy array\[n,x,y\], dtype=bool
     * False = Background, True = nuclei
 * labeled masks
-    * numpy array[n,x,y], dtype=uint8 
+    * numpy array\[n,x,y\], dtype=uint8
     * 0= background
     * 1, 2, 3, ... different nuclei
     
@@ -24,7 +24,7 @@
     * write_submission("filename")
 * model class?
     * Basti: prototype?
-    * __init__ -> set parameters
+    * \_\_init\_\_ -> set parameters
     * fit(images, masks)
     * predict(images)
     
@@ -51,7 +51,7 @@
         * returns array of iou score lists (one per nucleus in truth)
 * get_score(truth,predictions, th=None)
     * only on labled masks
-    * if th is in [.5,1]:
+    * if th is in \[0.5,1\]:
         * returns array of fraction of recognized nuclei per image at threshold th
     * else 
         * array with average fraction of recognized nuclei per image at all thresholds np.arange(0.5,0.95,0.05)
@@ -59,23 +59,3 @@
 * show_image(images, masks, labled_masks, idx)
     * sanity check function (e.g. plot the three images) but also print score, rank, image classification, other features
     * idx can be "random", "worst", "bad", "average", "good","best"
-        
-    
-    
-
-
-```python
-
-```
-
-
-    ---------------------------------------------------------------------------
-
-    TypeError                                 Traceback (most recent call last)
-
-    <ipython-input-1-df6fdd0e565e> in <module>()
-    ----> 1 range(0.5,0.95,0.05)
-    
-
-    TypeError: 'float' object cannot be interpreted as an integer
-
