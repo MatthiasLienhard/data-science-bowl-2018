@@ -1,4 +1,5 @@
-#this is still test mode
+# this is still test mode
+# todo: should become a notebook!
 
 import numpy as np
 import pandas as pd
@@ -13,19 +14,45 @@ print("reading training images")
 train.load_images()
 print("reading training masks")
 train.read_masks()
-testmodel=ModelUNet_rep.ModelUNet(m_file='unet_model1.h5')
-testmodel.fit_model(train)
-#training not tested yet!!!
+train.get_images()
+#testmodel=ModelUNet_rep.ModelUNet(m_file='unet_model1.h5',shape=(128,128,3))
+#testmodel.fit_model(train)
 model=ModelUNet_rep.ModelUNet(m_file='model-dsbowl2018-1.h5')
 
-train.pred=model.predict_unlabeld(train)
-train.labeled_pred=model.label(train.pred > 0.5)
+scaled_pred=model.predict_unlabeld(train)
+unlab_pred=train.rescale(scaled_pred, scale=None, dtype=np.float32, mode='reflect')
+#probability vector
 
-print(Images.iou(train.masks[0], train.pred[0] > 0.5 ))
+train.add_pred(model.label(unlab_pred, th=0.5))
+# this adds iou scores to train.features
 
-print(Images.iou(train.labeled_masks[0], train.labeled_pred[0]))
+# now start look at correlation of other features to score
 
-print(Images.iou_score(train.labeled_masks[0], train.labeled_pred[0]))
+
+train.show_image()
+# todo: color by IOU
+# todo: show set diffs of mask and prediction
+
+train.write_submission(file_name='testsubmission.csv')
+
+##########
+# scores #
+##########
+
+#unlabeled IOU
+print(Images.iou(train.masks[0] > 0, unlab_pred[0]>0.5))
+#labled IOUs per nucleus
+print(Images.iou(train.masks[0], train.pred[0]))
+#mean IOU
+print(np.mean(Images.iou(train.masks[0], train.pred[0])))
+# fraction of nuclei > th
+print(Images.iou_score(train.masks[0], train.pred[0], th=[.5]))
+print(Images.iou_score(train.masks[0], train.pred[0], th=[.95]))
+# fraction of nuclei > th average over range of thresholds
+print(Images.iou_score(train.masks[0], train.pred[0]))
+
+
+#unlabeled IOU
 
 train.show_image(0)
 

@@ -94,7 +94,8 @@ class ModelUNet(object): #maybe define prototype?
         if os.path.isfile(m_file):
             print("found model file")
             self.trained=True
-            #self.shape=...???? todo!
+            self.model=load_model(m_file, custom_objects={'mean_iou': ModelUNet.mean_iou})
+            self.shape=self.model.input_shape[1:4]
         else:
             # make new model
             self.shape=shape
@@ -107,33 +108,34 @@ class ModelUNet(object): #maybe define prototype?
         self.model=ModelUNet.init_model(self.shape)
         earlystopper = EarlyStopping(patience=5, verbose=1)
         checkpointer = ModelCheckpoint(self.m_file, verbose=1, save_best_only=True)
-        self.fit_history = self.model.fit(train.get_images(self.shape), train.get_masks(self.shape), validation_split=0.1, batch_size=16, epochs=50,
+        self.fit_history = self.model.fit(train.get_images(self.shape[:2]),
+                    train.get_masks(self.shape[:2],labeled=False),
+                    validation_split=0.1, batch_size=16, epochs=50,
                     callbacks=[earlystopper, checkpointer])
         self.trained=True
 
     def predict_unlabeld(self, img:Images, th=None):
         if self.trained:
             self.model = load_model(self.m_file, custom_objects={'mean_iou': ModelUNet.mean_iou})
-            preds = self.model.predict(img.images, verbose=1)
+            preds = self.model.predict(img.get_images(self.shape[:2]), verbose=2)
             if not th is None:
                 # Threshold predictions
                 preds = (preds > th).astype(np.bool)
                 # todo: da kann man sich noch was besseres einfallen lassen
-
         else:
             preds=None
             warnings.warn('Model not trained yet')
         return preds
 
-    def predict_labeled(self, img:Images):
-        unl_pred=self.predict_unlabeld(img, th=.5)
-        return self.label(unl_pred)
+    #def predict_labeled(self, img:Images):
+    #    unl_pred=self.predict_unlabeld(img, th=.5)
+    #    return self.label(unl_pred)
 
-    def label(self, unl_pred):
+    def label(self, unl_pred, th=0.5):
         # todo: a lot of room for improvements!!!
-        lab_pred=np.zeros(unl_pred.shape, dtype=np.uint)
-        for i in range(unl_pred.shape[0]):
-            lab_pred[i]=skimage.morphology.label(unl_pred[i])
+        lab_pred=[]#np.zeros(unl_pred.shape, dtype=np.uint)
+        for i in range(len(unl_pred)):
+            lab_pred.append(skimage.morphology.label(unl_pred[i] > th))
         return lab_pred
 
 
@@ -141,7 +143,6 @@ class ModelUNet(object): #maybe define prototype?
 if __name__=='__main__':
 
     train=Images()
-    train.get_ids()
     train.ids=train.ids[:10]
     train.features=train.features[:10]
     print("reading training images")
