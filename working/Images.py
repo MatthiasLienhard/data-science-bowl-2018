@@ -1,5 +1,3 @@
-#functions from public kernel
-#cv-score-calculation-takes-5-min-in-kernel
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -13,11 +11,11 @@ from multiprocessing import Pool
 import tensorflow as tf
 
 class Images(object):
-    def __init__(self, path="../input/stage1_train",width=128, height=128, channels=3):
+    def __init__(self, path="../input/stage1_train"):
         self.path=path
-        self.width=width
-        self.height=height
-        self.channels=channels
+        #self.width=width
+        #self.height=height
+        #self.channels=channels
         self.ids=None
         self.images=None
         self.masks=None
@@ -25,7 +23,9 @@ class Images(object):
         self.pred=None
         self.labeled_pred=None
         self.features=None
-    def get_ids(self):
+        self.get_ids()
+
+    def get_ids(self):#idea: not all but list of ids/indices?
         ids=next(os.walk(self.path))[1]
         if self.ids is None:
             self.ids=ids
@@ -33,19 +33,31 @@ class Images(object):
         elif not set(self.ids).issubset(set(ids)) :
             raise ValueError('ids do not match')
 
+    def get_images(scale=(128,128,3))
+        if scale is None:
+            return self.images
+        else:        
+            height, width, channels=scale
+            scaled_images=np.zeros((len(self.ids), height, width, channels), dtype=np.uint8)
+            for i in len(self.images):
+                scaled_images[i]= resize(img, (self.height, self.width), mode='constant', preserve_range=True)
+        return scaled_images
+    
     def read_images(self):
         self.get_ids()
-        self.images=np.zeros((len(self.ids), self.height, self.width, self.channels), dtype=np.uint8)
-        dims=np.zeros(shape=(len(self.ids), 2 ))
-        sys.stdout.flush()
+        #self.images=np.zeros((len(self.ids), self.height, self.width, self.channels), dtype=np.uint8)
+        self.images=[]        
+        dims=np.zeros(shape=(len(self.ids), 3 ))
+        sys.stdout.flush() 
         for n, id_ in tqdm.tqdm(enumerate(self.ids), total=len(self.ids)):
             img = scipy.misc.imread(self.path + '/' + id_ + '/images/' + id_ + '.png')[:,:,:self.channels]
-            dims[n]=img.shape[:2]
-            self.images[n]= resize(img, (self.height, self.width), mode='constant', preserve_range=True)
+            dims[n]=img.shape
+            self.images.append(img)
+            #self.images[n]= resize(img, (self.height, self.width), mode='constant', preserve_range=True)
         sys.stdout.flush()
         self.features['size_x']=dims[:,0]
         self.features['size_y']=dims[:,1]
-
+        self.features['n_channels']=dims[:,2]
 
     def read_masks(self):
         # adds images labeled and unlabeled masks
@@ -158,8 +170,11 @@ def iou(truth, pred):
         sel=np.where(truth == truth_c)
         pred_c=pred[sel].astype(np.int)
         #print(np.bincount(pred_c))
-
-        pred_c=np.argmax(np.bincount(pred_c)) #majoritiy vote... is this always the best?+
+        if sel is None:
+            pred_c=0
+            warnings.warn("found mask of size 0")
+        else:
+            pred_c=np.argmax(np.bincount(pred_c)) #majoritiy vote... is this always the best?+
         #print(pred_c)
         if pred_c > 0:
             isect=np.sum(np.logical_and(truth==truth_c, pred==pred_c))

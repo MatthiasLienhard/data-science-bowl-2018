@@ -7,13 +7,15 @@ import ModelUNet_rep
 train=Images.Images()
 train.get_ids()
 #subselect, to make it faster
-train.ids=train.ids[:10]
-train.features=train.features[:10]
+#train.ids=train.ids[:10]
+#train.features=train.features[:10]
 
 print("reading training images")
 train.read_images()
 print("reading training masks")
 train.read_masks()
+testmodel=ModelUNet_rep.ModelUNet('unet_model1.h5')
+testmodel.fit_model(train)
 #training not tested yet!!!
 model=ModelUNet_rep.ModelUNet('model-dsbowl2018-1.h5')
 

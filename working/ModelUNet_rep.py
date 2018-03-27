@@ -32,7 +32,7 @@ class ModelUNet(object): #maybe define prototype?
 
     @staticmethod
     def init_model(train):
-        inputs = Input((train.heigth, train.width, train.heigth))
+        inputs = Input((train.height, train.width, train.channels))
         s = Lambda(lambda x: x / 255) (inputs)
         c1 = Conv2D(16, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (s)
         c1 = Dropout(0.1) (c1)
@@ -97,14 +97,15 @@ class ModelUNet(object): #maybe define prototype?
         else:
             # make new model
             self.trained=False
+            
         self.m_file=m_file
         self.fit_history=None
 
     def fit_model(self, train:Images):
-        model=ModelUNet.init_model(train)
+        self.model=ModelUNet.init_model(train)
         earlystopper = EarlyStopping(patience=5, verbose=1)
-        checkpointer = ModelCheckpoint('model-dsbowl2018-1.h5', verbose=1, save_best_only=True)
-        self.fit_history = self.model.fit(self.train.images, self.train.masks, validation_split=0.1, batch_size=16, epochs=50,
+        checkpointer = ModelCheckpoint(m_file, verbose=1, save_best_only=True)
+        self.fit_history = self.model.fit(train.images, train.masks, validation_split=0.1, batch_size=16, epochs=50,
                     callbacks=[earlystopper, checkpointer])
         self.trained=True
 
