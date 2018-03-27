@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import scipy
 import tqdm
-from skimage.transform import resize
+import skimage.transform
 import os
 import warnings
 import sys
@@ -19,9 +19,7 @@ class Images(object):
         self.ids=None
         self.images=None
         self.masks=None
-        self.labeled_masks=None
         self.pred=None
-        self.labeled_pred=None
         self.features=None
         self.get_ids()
 
@@ -32,26 +30,39 @@ class Images(object):
             self.features=pd.DataFrame(data=self.ids, columns=['ids'])
         elif not set(self.ids).issubset(set(ids)) :
             raise ValueError('ids do not match')
-
-    def get_images(scale=(128,128,3))
+    @classmethod
+    def rescale(imgs,scale=(128,128,3), dtype=np.uint8,**pw):
         if scale is None:
-            return self.images
-        else:        
+            if dtype == imgs.dtype:
+                return imgs
+            else:
+                return imgs.astype(dtype)
+        else:
             height, width, channels=scale
-            scaled_images=np.zeros((len(self.ids), height, width, channels), dtype=np.uint8)
-            for i in len(self.images):
-                scaled_images[i]= resize(img, (self.height, self.width), mode='constant', preserve_range=True)
+            scaled_images=np.zeros((len(imgs),) + scale, dtype=dtype)
+            for i in range(len(imgs)):
+                scaled_images[i]= skimage.transform.resize(imgs[i], (height, width), mode='constant',**pw).astype(dtype)
         return scaled_images
-    
-    def read_images(self):
-        self.get_ids()
+    def get_images(self, scale=(128,128,3)):
+        return Images.rescale(self.masks,scale, np.uint8, anti_aliasing=True, preserve_range=True,mode='constant' )
+    def get_masks(self,scale=(128,128), labeled=True):
+        if labeled:
+            dtype=np.uint16
+        else:
+            dtype=np.bool
+        return Images.rescale(self.masks,scale, dtype, anti_aliasing=False, preserve_range=True,mode='constant' )
+
+    def load_images(self):
         #self.images=np.zeros((len(self.ids), self.height, self.width, self.channels), dtype=np.uint8)
         self.images=[]        
         dims=np.zeros(shape=(len(self.ids), 3 ))
         sys.stdout.flush() 
         for n, id_ in tqdm.tqdm(enumerate(self.ids), total=len(self.ids)):
-            img = scipy.misc.imread(self.path + '/' + id_ + '/images/' + id_ + '.png')[:,:,:self.channels]
+            img = scipy.misc.imread(self.path + '/' + id_ + '/images/' + id_ + '.png', mode='RGB') #remove alpha channel
             dims[n]=img.shape
+            if np.all(img[:,:,0]==img[:,:,0]) and np.all(img[:,:,0]==img[:,:,0]):
+                dims[2]=1
+                #is it worth removing color information?
             self.images.append(img)
             #self.images[n]= resize(img, (self.height, self.width), mode='constant', preserve_range=True)
         sys.stdout.flush()
@@ -63,20 +74,24 @@ class Images(object):
         # adds images labeled and unlabeled masks
         # idea: better in original size?
         self.get_ids()
-        self.labeled_masks = np.zeros((len(self.ids),self.height, self.width, 1), dtype=np.uint)
-        self.masks = np.zeros((len(self.ids),self.height, self.width, 1), dtype=np.bool)
-        nuclei_features=np.zeros((len(self.ids),5)) #store 5 features of the mask
+        #self.masks = np.zeros((len(self.ids),self.height, self.width, 1), dtype=np.uint16)
+        self.masks=[]
+        nuclei_features=np.zeros((len(self.ids),5)) #store 5 features of the mask: number of nuclei, mean size, sd, min, max
+        #todo: more interesting features would be: circumfence
         sys.stdout.flush()
+        height=self.features['size_x'].astype(np.int)
+        width=self.features['size_y'].astype(np.int)
         for n, id_ in tqdm.tqdm(enumerate(self.ids), total=len(self.ids)):
             m_size=[]
+            self.masks.append(np.zeros((height[n], width[n]), dtype=np.uint16))
             for k, mask_file in enumerate(next(os.walk(self.path + '/'+ id_ + '/masks/'))[2]):
                 #print(mask_file)
                 mask = scipy.misc.imread(self.path + '/' + id_ +  '/masks/' + mask_file).astype(np.bool)
-                mask = np.expand_dims(resize(mask, (self.height, self.width), mode='constant',
-                                              preserve_range=True), axis=-1).astype(np.bool)
+                #mask = np.expand_dims(resize(mask, (self.height, self.width), mode='constant',
+                #                              preserve_range=True), axis=-1).astype(np.bool)
                 m_size.append(np.sum(mask))
-                self.masks[n] = np.maximum(self.masks[n], mask) 
-                self.labeled_masks[n] = np.maximum(self.labeled_masks[n], mask * (k+1)) #assuming they are not overlaying
+                #self.masks[n] = np.maximum(self.masks[n], mask) #unlabeled
+                self.masks[n] = np.maximum(self.masks[n], mask * (k+1)) #assuming they are not overlaying
             nuclei_features[n,0]=k+1
             nuclei_features[n,1]=np.mean(m_size)
             nuclei_features[n,2]=np.std(m_size)
@@ -119,8 +134,10 @@ class Images(object):
         plt.show()
 
     def write_submission(self, file_name):
+        warnings.warn( 'not functional yet' )
+        #todo: adapt code
         if self.pred is None:
-            warnings.warn("")
+            warnings.warn("no labeled prediction found")
         # Run-length encoding stolen from https://www.kaggle.com/rakhlin/fast-run-length-encoding-python
         def rle_encoding(x):
             dots = np.where(x.T.flatten() == 1)[0]
@@ -146,6 +163,8 @@ class Images(object):
         sub['ImageId'] = ids_out
         sub['EncodedPixels'] = pd.Series(rles).apply(lambda x: ' '.join(str(y) for y in x))
         sub.to_csv(file_name, index=False)
+
+    #def add_iou_score(self):
 
 
 
@@ -208,17 +227,17 @@ def iou_score(truth, pred, th=np.arange(.5,1,.05)):
 if __name__=='__main__':
     import ModelUNet_rep
     train=Images()
-    train.get_ids()
+    #train.get_ids()
     train.ids=train.ids[:10]
     train.features=train.features[:10]
     print("reading training images")
     train.read_images()
     print("reading training masks")
     train.read_masks()
-    model=ModelUNet_rep.ModelUNet('model-dsbowl2018-1.h5')
-    train.pred=model.predict_unlabeld(train)
-    train.labeled_pred=model.label(train.pred)
-    print(iou(train.masks[0], train.pred[0]))
-    print(iou(train.labeled_masks[0], train.labeled_pred[0]))
+    #model=ModelUNet_rep.ModelUNet('model-dsbowl2018-1.h5')
+    #train.pred=model.predict_unlabeld(train)
+    #train.labeled_pred=model.label(train.pred)
+    #print(iou(train.masks[0], train.pred[0]))
+    #print(iou(train.labeled_masks[0], train.labeled_pred[0]))
     train.show_image()
 

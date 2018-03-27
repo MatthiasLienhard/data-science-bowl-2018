@@ -31,8 +31,8 @@ class ModelUNet(object): #maybe define prototype?
         return K.mean(K.stack(prec), axis=0)
 
     @staticmethod
-    def init_model(train):
-        inputs = Input((train.height, train.width, train.channels))
+    def init_model(shape):
+        inputs = Input(shape)
         s = Lambda(lambda x: x / 255) (inputs)
         c1 = Conv2D(16, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (s)
         c1 = Dropout(0.1) (c1)
@@ -90,22 +90,24 @@ class ModelUNet(object): #maybe define prototype?
         #self.model.summary()
 
 
-    def __init__(self, m_file="model_unet_rep.h5"):
+    def __init__(self, shape=(128,128,3), m_file="model_unet_rep.h5"):
         if os.path.isfile(m_file):
             print("found model file")
             self.trained=True
+            #self.shape=...???? todo!
         else:
             # make new model
+            self.shape=shape
             self.trained=False
             
         self.m_file=m_file
         self.fit_history=None
 
     def fit_model(self, train:Images):
-        self.model=ModelUNet.init_model(train)
+        self.model=ModelUNet.init_model(self.shape)
         earlystopper = EarlyStopping(patience=5, verbose=1)
-        checkpointer = ModelCheckpoint(m_file, verbose=1, save_best_only=True)
-        self.fit_history = self.model.fit(train.images, train.masks, validation_split=0.1, batch_size=16, epochs=50,
+        checkpointer = ModelCheckpoint(self.m_file, verbose=1, save_best_only=True)
+        self.fit_history = self.model.fit(train.get_images(self.shape), train.get_masks(self.shape), validation_split=0.1, batch_size=16, epochs=50,
                     callbacks=[earlystopper, checkpointer])
         self.trained=True
 
