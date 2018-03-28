@@ -143,7 +143,7 @@ class ModelUNet(object): #maybe define prototype?
 if __name__=='__main__':
 
     train=Images()
-    train.ids=train.ids[:10]
+    #train.ids=train.ids[:10]
     train.features=train.features[:10]
     print("reading training images")
     train.read_images()

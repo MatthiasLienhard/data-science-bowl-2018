@@ -7,29 +7,40 @@ import skimage.transform
 import os
 import warnings
 import sys
+import copy
 from multiprocessing import Pool
 import tensorflow as tf
 
 class Images(object):
     def __init__(self, path="../input/stage1_train"):
         self.path=path
-        #self.width=width
-        #self.height=height
-        #self.channels=channels
-        self.ids=None
         self.images=None
         self.masks=None
         self.pred=None
         self.features=None
-        self.get_ids()
+        self.add_ids()
 
-    def get_ids(self):#idea: not all but list of ids/indices?
+    def add_ids(self):#idea: not all but list of ids/indices?
         ids=next(os.walk(self.path))[1]
-        if self.ids is None:
-            self.ids=ids
-            self.features=pd.DataFrame(data=self.ids, columns=['ids'])
-        elif not set(self.ids).issubset(set(ids)) :
+        if self.features is None:
+            self.features=pd.DataFrame(data=ids, columns=['ids'])
+        elif not set(self.features['ids']).issubset(set(ids)) :
             raise ValueError('ids do not match')
+
+    def subset(self, idx):
+        ret=copy.deepcopy(self)
+        ret.features=ret.features.loc[idx]
+        ret.features.index=range(ret.n())
+        if ret.images is not None:
+            ret.images=list( ret.images[i] for i in idx )
+        if ret.masks is not None:
+            ret.masks=list( ret.masks[i] for i in idx )
+        if ret.pred is not None:
+            ret.pred=list( ret.pred[i] for i in idx )
+        return ret
+
+    def n(self):
+        return self.features.shape[0]
 
     def rescale(self, imgs, scale=(128,128,3), dtype=np.uint8, **kwargs):
         if scale is None:
@@ -59,11 +70,10 @@ class Images(object):
         return self.rescale(self.masks, scale + (1,), dtype,  preserve_range=True, mode='reflect')
 
     def load_images(self):
-        #self.images=np.zeros((len(self.ids), self.height, self.width, self.channels), dtype=np.uint8)
-        self.images=[]        
-        dims=np.zeros(shape=(len(self.ids), 3 ), dtype=np.int)
+        self.images=[]
+        dims=np.zeros(shape=(self.n(), 3 ), dtype=np.int)
         sys.stdout.flush() 
-        for n, id_ in tqdm.tqdm(enumerate(self.ids), total=len(self.ids)):
+        for n, id_ in tqdm.tqdm(enumerate(self.features['ids']), total=self.n()):
             img = scipy.misc.imread(self.path + '/' + id_ + '/images/' + id_ + '.png', mode='RGB') #remove alpha channel
             dims[n]=img.shape
             if np.all(img[:,:,0]==img[:,:,1]) and np.all(img[:,:,0]==img[:,:,2]):
@@ -76,18 +86,18 @@ class Images(object):
         self.features['size_y']=dims[:,1].astype(np.int)
         self.features['n_channels']=dims[:,2].astype(np.int)
 
-    def read_masks(self):
+    def load_masks(self):
         # adds images labeled and unlabeled masks
-        # idea: better in original size?
-        self.get_ids()
+        #self.add_ids()
+
         #self.masks = np.zeros((len(self.ids),self.height, self.width, 1), dtype=np.uint16)
         self.masks=[]
-        nuclei_features=np.zeros((len(self.ids),5), dtype=np.int) #store 5 features of the mask: number of nuclei, mean size, sd, min, max
+        nuclei_features=np.zeros((self.n(),5), dtype=np.int) #store 5 features of the mask: number of nuclei, mean size, sd, min, max
         #todo: more interesting features would be: circumfence
         sys.stdout.flush()
         height=self.features['size_x']
         width=self.features['size_y']
-        for n, id_ in tqdm.tqdm(enumerate(self.ids), total=len(self.ids)):
+        for n, id_ in tqdm.tqdm(enumerate(self.features['ids']), total=self.n()):
             m_size=[]
             self.masks.append(np.zeros((height[n], width[n],1), dtype=np.uint16))
             for k, mask_file in enumerate(next(os.walk(self.path + '/'+ id_ + '/masks/'))[2]):
@@ -114,7 +124,7 @@ class Images(object):
         # idx can be "random", "worst", "bad", "average", "good","best"
 
         if idx == "random":
-            idx = scipy.random.randint(0, len(self.ids))
+            idx = scipy.random.randint(0, self.n())
         elif idx == "bad":
             # select image with poor performance
             idx=0 #not implemented yet
@@ -154,10 +164,11 @@ class Images(object):
             self.features['iou_th95'] = scores[:, 2]
 
     def write_submission(self, file_name):
-        warnings.warn( 'not functional yet' )
-        #todo: adapt code
+
         if self.pred is None:
             warnings.warn("no labeled prediction found")
+            return 1
+
         # Run-length encoding stolen from https://www.kaggle.com/rakhlin/fast-run-length-encoding-python
         def rle_encoding(x):
             dots = np.where(x.T.flatten() == 1)[0]
@@ -169,20 +180,20 @@ class Images(object):
                 prev = b
             return run_lengths
 
-        def prob_to_rles(x, cutoff=0.5):
-
-            for i in range(1, self.pred.max() + 1):
-                yield rle_encoding(self.pred == i)
+        def prob_to_rles(x):
+            for i in range(1, x.max() + 1):
+                yield rle_encoding(x == i)
         ids_out = []
         rles = []
-        for n, id_ in enumerate(self.ids):
-            rle = list(prob_to_rles(self.upsampled(self.pred)))
+        for n, id_ in enumerate(self.features['ids']):
+            rle = list(prob_to_rles(self.pred[n]))
             rles.extend(rle)
             ids_out.extend([id_] * len(rle))
         sub = pd.DataFrame()
         sub['ImageId'] = ids_out
         sub['EncodedPixels'] = pd.Series(rles).apply(lambda x: ' '.join(str(y) for y in x))
         sub.to_csv(file_name, index=False)
+        return 0
 
     #def add_iou_score(self):
 

@@ -1,13 +1,11 @@
-# this is still test mode
-# todo: should become a notebook!
-
 import numpy as np
 import pandas as pd
+import skimage
 import Images
 import ModelUNet_rep
 train=Images.Images()
 #subselect, to make it faster
-train.ids=train.ids[:10]
+
 train.features=train.features[:10]
 
 print("reading training images")
