@@ -1,0 +1,4 @@
+1) wie performt boundary detection?
+2) wenn gut, wie kann das genutzt werden um image segmentation hinzubekommen
+skimage.segmentation???
+3) iou score ignoriert bisher false positive, daher ist sie so groß--> fix

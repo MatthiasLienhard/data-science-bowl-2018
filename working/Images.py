@@ -4,6 +4,8 @@ import pandas as pd
 import scipy
 import tqdm
 import skimage.transform
+import skimage.segmentation
+import skimage.measure
 import os
 import warnings
 import sys
@@ -16,8 +18,10 @@ class Images(object):
         self.path=path
         self.images=None
         self.masks=None
+        self.mask_boundaries=None
         self.pred=None
         self.features=None
+        self.nuc_features=None
         self.add_ids()
 
     def add_ids(self):#idea: not all but list of ids/indices?
@@ -35,6 +39,10 @@ class Images(object):
             ret.images=list( ret.images[i] for i in idx )
         if ret.masks is not None:
             ret.masks=list( ret.masks[i] for i in idx )
+            ret.nuc_features=ret.nuc_features.loc[ret.nuc_features['img_id']==idx]
+            ret.nuc_features.index=range(ret.nuc_features.shape[0])
+        if ret.mask_boundaries is not None:
+            ret.mask_boundaries=list( ret.mask_boundaries[i] for i in idx )
         if ret.pred is not None:
             ret.pred=list( ret.pred[i] for i in idx )
         return ret
@@ -92,30 +100,41 @@ class Images(object):
 
         #self.masks = np.zeros((len(self.ids),self.height, self.width, 1), dtype=np.uint16)
         self.masks=[]
+        self.mask_boundaries=[]
         nuclei_features=np.zeros((self.n(),5), dtype=np.int) #store 5 features of the mask: number of nuclei, mean size, sd, min, max
         #todo: more interesting features would be: circumfence
         sys.stdout.flush()
         height=self.features['size_x']
         width=self.features['size_y']
+        #self.nuc_features=pd.DataFrame(columns=['nuc_ids','img_id','size', 'boundary'])
+        nucf_list=[]
+
         for n, id_ in tqdm.tqdm(enumerate(self.features['ids']), total=self.n()):
-            m_size=[]
+            #m_size=[]
+            #b_size=[]
             self.masks.append(np.zeros((height[n], width[n],1), dtype=np.uint16))
             for k, mask_file in enumerate(next(os.walk(self.path + '/'+ id_ + '/masks/'))[2]):
                 #print(mask_file)
                 mask = np.expand_dims(scipy.misc.imread(self.path + '/' + id_ +  '/masks/' + mask_file), axis=-1).astype(np.bool)
-                m_size.append(np.sum(mask))
+                #m_size.append(np.sum(mask))
+                #boundary=
+                #b_size.append(skimage.measure.perimeter(mask))
                 #self.masks[n] = np.maximum(self.masks[n], mask) #unlabeled
                 self.masks[n] = np.maximum(self.masks[n], mask * (k+1)) #assuming they are not overlaying
-
+            self.mask_boundaries.append(skimage.segmentation.find_boundaries(self.masks[n]))
+            props=skimage.measure.regionprops(self.masks[n])
+            b_size=[p.perimeter for p in props]
+            m_size=[p.area for p in props]
             nuclei_features[n,0]=k+1
             nuclei_features[n,1]=np.mean(m_size).astype(np.int)
             nuclei_features[n,2]=np.std(m_size)
             nuclei_features[n,3]=np.min(m_size)
             nuclei_features[n,4]=np.max(m_size)
-
+            nucf_list.append(pd.DataFrame({'img_id': np.repeat(n,k+1),'size': m_size, 'boundary': b_size}))
         self.features=pd.concat((self.features,pd.DataFrame(data=nuclei_features,
                     columns=['nuclei_n', 'nuclei_meanSz','nuclei_stdSz', 'nuclei_minSz', 'nuclei_maxSz'])),
                     axis=1)
+        self.nuc_features=pd.concat(nucf_list, ignore_index=True)
         sys.stdout.flush()
 
     def show_image(self, idx="random"):
@@ -130,22 +149,28 @@ class Images(object):
             idx=0 #not implemented yet
         print(self.features.iloc[[idx]])
         if not self.images is None:
-            plt.subplot(221)
+            plt.subplot(231)
             plt.imshow(self.images[idx])
             plt.title('original')
             #plt.grid(True)
         if not self.masks is None:
-            plt.subplot(222)
+            plt.subplot(232)
             plt.imshow(np.squeeze(self.masks[idx]>0))
             plt.title('unlabled mask')
-            plt.subplot(223)
+            plt.subplot(233)
             plt.imshow(np.squeeze(self.masks[idx]))
             plt.title('labeled mask')
+            plt.subplot(234)
+            plt.imshow(np.squeeze(self.mask_boundaries[idx]))
+            plt.title('mask boundaries')
         if not self.pred is None:
-            plt.subplot(224)
+            plt.subplot(235)
             plt.imshow(np.squeeze(self.pred[idx]))
             plt.title('prediction')
-
+            if self.mask is not None:
+                plt.subplot(236)
+                plt.imshow(np.squeeze(self.pred[idx]))
+                plt.title('diff map (tbd)')
         plt.subplots_adjust(top=0.92, bottom=0.08, left=0.10, right=0.95, hspace=0.25,
                         wspace=0.35)
         plt.show()

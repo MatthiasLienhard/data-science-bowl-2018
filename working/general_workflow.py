@@ -19,9 +19,9 @@ import ModelUNet_rep
 
 
 #some definitions
-debug=True #perform on a subset --> faster
+debug=False #perform on a subset --> faster
 model_shape=(256,256,3) #works with shape (2^x, 2^x) only?
-model_name='unet_v1_{}x{}'.format(model_shape[0],model_shape[1])
+model_name='unet_boundaries_{}x{}'.format(model_shape[0],model_shape[1])
 if debug:
     model_name += '_debug'
 
@@ -42,6 +42,9 @@ if debug:
     train=train.subset(idx=range(20))
     #todo: overload [] to get this
 
+#we want to learn the boundaries
+masks=train.masks
+train.masks=train.mask_boundaries
 
 #set aside 10% for validation
 val=train.subset(np.arange(train.n()*.9, train.n()))
@@ -91,7 +94,9 @@ pred=model.label(unlab_pred, th=0.5) #this function should also use the images
 #add labled predictions to container
 train.add_pred(pred)
 # this adds iou scores to train.features
-train.features.drop(['ids'], axis=1).head()  
+print( train.features.drop(['ids'], axis=1).head() ) 
+print("expected LB score(train): {}".format(np.mean(train.features['iou_score'])))
+
 train.show_image()
 
 
@@ -108,7 +113,8 @@ unlab_pred=val.rescale(scaled_pred, scale=None, dtype=np.float32, mode='reflect'
 print('labeling predinctions...')
 pred=model.label(unlab_pred, th=0.5) 
 val.add_pred(pred)
-val.features.drop(['ids'], axis=1).head()  
+val.features.drop(['ids'], axis=1).head()
+print("expected LB score(val): {}".format(np.mean(val.features['iou_score'])))
 val.show_image()
 
 
@@ -167,7 +173,7 @@ print('unlabeled IoU per nucleus: {}'.format(Images.iou(val.masks[0], val.pred[0
 print('mean IoU: {}'.format(np.mean(Images.iou(val.masks[0], val.pred[0]))))
 # fraction of nuclei > th
 print('fraction of nuclei has IoU > 0.5: {}'.format(Images.iou_score(val.masks[0], val.pred[0], th=[.5])))
-print('fraction of nuclei has IoU > 0.5: {}'.format(Images.iou_score(val.masks[0], val.pred[0], th=[.95])))
+print('fraction of nuclei has IoU > 0.95: {}'.format(Images.iou_score(val.masks[0], val.pred[0], th=[.95])))
 # fraction of nuclei > th average over range of thresholds
 print('IoU score (over range of thresholds): {}'.format(Images.iou_score(val.masks[0], val.pred[0])))
 
