@@ -85,7 +85,8 @@ class ModelUNet(object): #maybe define prototype?
         outputs = Conv2D(1, (1, 1), activation='sigmoid') (c9)
 
         model = Model(inputs=[inputs], outputs=[outputs])
-        model.compile(optimizer='adam', loss='binary_crossentropy', metrics=[ModelUNet.mean_iou])
+        model.compile(optimizer='adam', loss=iou_loss, metrics=[ModelUNet.mean_iou])
+        #model.compile(optimizer='adam', loss='binary_crossentropy', metrics=[ModelUNet.mean_iou])
         return model
         #self.model.summary()
 
@@ -94,7 +95,7 @@ class ModelUNet(object): #maybe define prototype?
         if os.path.isfile(m_file):
             print("found model file")
             self.trained=True
-            self.model=load_model(m_file, custom_objects={'mean_iou': ModelUNet.mean_iou})
+            self.model=load_model(m_file, custom_objects={'mean_iou': ModelUNet.mean_iou,'iou_loss':iou_loss})
             self.shape=self.model.input_shape[1:4]
         else:
             # make new model
@@ -116,7 +117,7 @@ class ModelUNet(object): #maybe define prototype?
 
     def predict_unlabeld(self, img:Images, th=None):
         if self.trained:
-            self.model = load_model(self.m_file, custom_objects={'mean_iou': ModelUNet.mean_iou})
+            self.model = load_model(self.m_file, custom_objects={'mean_iou': ModelUNet.mean_iou,'iou_loss':iou_loss})
             preds = self.model.predict(img.get_images(self.shape[:2]), verbose=2)
             if not th is None:
                 # Threshold predictions
@@ -137,6 +138,29 @@ class ModelUNet(object): #maybe define prototype?
         for i in range(len(unl_pred)):
             lab_pred.append(skimage.morphology.label(unl_pred[i] > th))
         return lab_pred
+   
+
+def iou_loss(y_true,y_pred):
+    #stolen from 
+    #http://angusg.com/writing/2016/12/28/optimizing-iou-semantic-segmentation.html
+    logits=tf.reshape(y_pred, [-1])
+    trn_labels=tf.reshape(y_true, [-1])
+    '''
+    Eq. (1) The intersection part - tf.mul is element-wise, 
+    if logits were also binary then tf.reduce_sum would be like a bitcount here.
+    '''
+    inter=tf.reduce_sum(tf.multiply (logits,trn_labels))
+    
+    '''
+    Eq. (2) The union part - element-wise sum and multiplication, then vector sum
+    '''
+    union=tf.reduce_sum(tf.subtract(tf.add(logits,trn_labels),tf.multiply(logits,trn_labels)))
+    
+    # Eq. (4)
+    loss=tf.subtract(tf.constant(1.0, dtype=tf.float32),tf.div(inter,union))
+    return loss
+
+    
 
 
 
@@ -146,9 +170,9 @@ if __name__=='__main__':
     #train.ids=train.ids[:10]
     train.features=train.features[:10]
     print("reading training images")
-    train.read_images()
+    train.load_images()
     print("reading training masks")
-    train.read_masks()
-    model=ModelUNet('test.h5')
-    train.pred=model.predict(train, th=None)
+    train.load_masks()
+    model=ModelUNet('unet_v1_256x256.h5')
+    train.pred=model.predict_unlabeld(train, th=None)
     train.show_image()
