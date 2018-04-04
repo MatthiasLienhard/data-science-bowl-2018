@@ -18,7 +18,6 @@ class Images(object):
         self.path=path
         self.images=None
         self.masks=None
-        self.mask_boundaries=None
         self.pred=None
         self.features=None
         self.nuc_features=None
@@ -41,8 +40,6 @@ class Images(object):
             ret.masks=list( ret.masks[i] for i in idx )
             ret.nuc_features=ret.nuc_features.loc[ret.nuc_features['img_id']==idx]
             ret.nuc_features.index=range(ret.nuc_features.shape[0])
-        if ret.mask_boundaries is not None:
-            ret.mask_boundaries=list( ret.mask_boundaries[i] for i in idx )
         if ret.pred is not None:
             ret.pred=list( ret.pred[i] for i in idx )
         return ret
@@ -50,32 +47,53 @@ class Images(object):
     def n(self):
         return self.features.shape[0]
 
-    def rescale(self, imgs, scale=(128,128,3), dtype=np.uint8, **kwargs):
+    def rescale(self, what, scale=(128,128,3),idx=None, dtype=np.uint8, **kwargs):
+        if what=="images":
+            imgs=self.images
+        elif what == "masks":
+            imgs=self.masks
+        else:
+            raise ValueError('what should be "images" or "masks"')
+
+        if idx is None:
+            idx=range(len(imgs))
+        elif np.max(idx)>len(imgs):
+            raise ValueError('there are only {} images'.len(imgs))
+
         if scale is None:
             #rescale to original size
             scaled_images=[]
-            for i in range(len(imgs)):
+            for i in idx:
                 height = self.features['size_x'][i]
                 width  = self.features['size_y'][i]
                 scaled_images.append(skimage.transform.resize(imgs[i], (height, width), **kwargs).astype(dtype))
-
         else:
             scaled_images = np.zeros((len(imgs),) + scale , dtype=dtype)
-            for i in range(len(imgs)):
+            for i in idx:
                 scaled_images[i] = skimage.transform.resize(imgs[i], scale[:2], **kwargs).astype(dtype)
         return scaled_images
+    def get_mask_boundaries(self, scale=(128,128), idx=None):
+        _masks=self.get_masks(scale=scale, labeled=True, idx=idx)
+        mask_boundaries=[]
+        for i in range(len(_masks)):
+            mask_boundaries.append(skimage.segmentation.find_boundaries(_masks[i]))
+        return(mask_boundaries)
 
-    def get_images(self, scale=(128, 128)):
-        return self.rescale(self.images, scale + (3,), dtype=np.uint8,  preserve_range=True, mode='reflect')
+    def get_images(self, scale=(128, 128), idx=None):
+        if scale is not None:
+            scale=scale + (3,)
+        return self.rescale(what="images", scale=scale, idx=idx, dtype=np.uint8,  preserve_range=True, mode='reflect')
         #anti_alaiasing=True/False works for skimage.__version__ 0.14
 
-    def get_masks(self,scale=(128,128), labeled=True):
+    def get_masks(self,scale=(128,128), labeled=True, idx=None):
+        if scale is not None:
+            scale=scale + (1,)
         if labeled:
             dtype=np.uint16
             # requires to be done mask by mask, to avoid averages
         else:
             dtype=np.bool
-        return self.rescale(self.masks, scale + (1,), dtype,  preserve_range=True, mode='reflect')
+        return self.rescale(what="masks", scale=scale, idx=idx, dtype=dtype,  preserve_range=True, mode='reflect')
 
     def load_images(self):
         self.images=[]
@@ -100,7 +118,7 @@ class Images(object):
 
         #self.masks = np.zeros((len(self.ids),self.height, self.width, 1), dtype=np.uint16)
         self.masks=[]
-        self.mask_boundaries=[]
+        #self.mask_boundaries=[]
         nuclei_features=np.zeros((self.n(),5), dtype=np.int) #store 5 features of the mask: number of nuclei, mean size, sd, min, max
         #todo: more interesting features would be: circumfence
         sys.stdout.flush()
@@ -121,7 +139,7 @@ class Images(object):
                 #b_size.append(skimage.measure.perimeter(mask))
                 #self.masks[n] = np.maximum(self.masks[n], mask) #unlabeled
                 self.masks[n] = np.maximum(self.masks[n], mask * (k+1)) #assuming they are not overlaying
-            self.mask_boundaries.append(skimage.segmentation.find_boundaries(self.masks[n]))
+            #self.mask_boundaries.append(skimage.segmentation.find_boundaries(self.masks[n]))
             props=skimage.measure.regionprops(self.masks[n])
             b_size=[p.perimeter for p in props]
             m_size=[p.area for p in props]
@@ -161,7 +179,7 @@ class Images(object):
             plt.imshow(np.squeeze(self.masks[idx]))
             plt.title('labeled mask')
             plt.subplot(234)
-            plt.imshow(np.squeeze(self.mask_boundaries[idx]))
+            plt.imshow(np.squeeze(self.get_mask_boundaries(scale=None, idx=[idx])[0]))
             plt.title('mask boundaries')
         if not self.pred is None:
             plt.subplot(235)
