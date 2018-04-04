@@ -169,7 +169,7 @@ class Images(object):
             plt.title('prediction')
             if self.masks is not None:
                 plt.subplot(236)
-                plt.imshow(np.squeeze(self.pred[idx]>0 + self.masks>0))
+                plt.imshow(np.squeeze((self.pred[idx]>0).astype(np.int)*2 + (self.masks[idx]>0).astype(np.int)))
                 plt.title('diff map (tbd)')
         plt.subplots_adjust(top=0.92, bottom=0.08, left=0.10, right=0.95, hspace=0.25,
                         wspace=0.35)
@@ -270,8 +270,11 @@ def iou_score(truth, pred, th=np.arange(.5,1,.05)):
         # the average over all image should correspond to the score used by kaggle
     iou_vals=iou(truth, pred)
     mean_iou=[]
+    n_truth=len(np.unique(truth))-1
+    n_pred=len(np.unique(pred))-1
     for th_ in th :
-        mean_iou.append(np.mean(iou_vals>th_))
+        true_pos=np.sum(iou_vals>th_)
+        mean_iou.append(true_pos/(n_truth + n_pred - true_pos))
     return(np.mean(mean_iou))
 
 

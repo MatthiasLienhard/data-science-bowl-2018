@@ -1,4 +1,19 @@
-1) wie performt boundary detection?
+1) wie performt boundary detection? -- Ganz gut, aber nicht alle sind geschlossen
 2) wenn gut, wie kann das genutzt werden um image segmentation hinzubekommen
 skimage.segmentation???
-3) iou score ignoriert bisher false positive, daher ist sie so groß--> fix
+2b wie wäre IOU wenn mann die truth flatted und dann wieder labelt?
+3) iou score ignoriert bisher false positive, daher ist sie so groß--> fix (works now?)
+4) foreground prediction bei farbigen bildern scheint schlechter zu gehen -> check?
+
+5) Analysis: 
+wich images have low IOU wrt fg vs bg detection (UNet)
+- color vs gray?
+- image size?
+- aspect ratio?
+
+
+wich images have issues with labeling
+- currently: all touching
+
+
+
