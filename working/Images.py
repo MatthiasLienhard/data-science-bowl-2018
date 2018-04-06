@@ -10,6 +10,8 @@ import os
 import warnings
 import sys
 import copy
+from collections import OrderedDict
+
 from multiprocessing import Pool
 import tensorflow as tf
 
@@ -48,12 +50,15 @@ class Images(object):
         return self.features.shape[0]
 
     def rescale(self, what, scale=(128,128,3),idx=None, dtype=np.uint8, **kwargs):
-        if what=="images":
-            imgs=self.images
-        elif what == "masks":
-            imgs=self.masks
+        if type(what) is str:
+            if what =="images":
+                imgs=self.images
+            elif what == "masks":
+                imgs=self.masks
+        elif type(what) is np.ndarray:
+            imgs=what
         else:
-            raise ValueError('what should be "images" or "masks"')
+            raise ValueError('"what" should be "images" or "masks", or a numpy array')
 
         if idx is None:
             idx=range(len(imgs))
@@ -74,9 +79,14 @@ class Images(object):
         return scaled_images
     def get_mask_boundaries(self, scale=(128,128), idx=None):
         _masks=self.get_masks(scale=scale, labeled=True, idx=idx)
-        mask_boundaries=[]
-        for i in range(len(_masks)):
-            mask_boundaries.append(skimage.segmentation.find_boundaries(_masks[i]))
+        if scale is None:
+            mask_boundaries=[]
+            for i in range(len(_masks)):
+                mask_boundaries.append(skimage.segmentation.find_boundaries(_masks[i]))
+        else:
+            mask_boundaries=np.zeros(_masks.shape, np.bool)
+            for i in range(len(_masks)):
+                mask_boundaries[i]=skimage.segmentation.find_boundaries(_masks[i])
         return(mask_boundaries)
 
     def get_images(self, scale=(128, 128), idx=None):
@@ -148,7 +158,7 @@ class Images(object):
             nuclei_features[n,2]=np.std(m_size)
             nuclei_features[n,3]=np.min(m_size)
             nuclei_features[n,4]=np.max(m_size)
-            nucf_list.append(pd.DataFrame({'img_id': np.repeat(n,k+1),'size': m_size, 'boundary': b_size}))
+            nucf_list.append(pd.DataFrame(OrderedDict([ ('img_id', np.repeat(n,k+1)),('nuc_i', np.arange(1,k+2)),('size', m_size),('boundary', b_size) ] ) ))
         self.features=pd.concat((self.features,pd.DataFrame(data=nuclei_features,
                     columns=['nuclei_n', 'nuclei_meanSz','nuclei_stdSz', 'nuclei_minSz', 'nuclei_maxSz'])),
                     axis=1)
@@ -165,51 +175,73 @@ class Images(object):
         elif idx == "bad":
             # select image with poor performance
             idx=0 #not implemented yet
-        print(self.features.iloc[[idx]])
+        print(self.features.drop(['ids'], axis=1).iloc[[idx]])
         if not self.images is None:
-            plt.subplot(231)
+            plt.subplot(321)
             plt.imshow(self.images[idx])
             plt.title('original')
             #plt.grid(True)
         if not self.masks is None:
-            plt.subplot(232)
-            plt.imshow(np.squeeze(self.masks[idx]>0))
-            plt.title('unlabled mask')
-            plt.subplot(233)
+            #plt.subplot(322)
+            #plt.imshow(np.squeeze(self.masks[idx]>0))
+            #plt.title('unlabled mask')
+            plt.subplot(323)
             plt.imshow(np.squeeze(self.masks[idx]))
             plt.title('labeled mask')
-            plt.subplot(234)
-            plt.imshow(np.squeeze(self.get_mask_boundaries(scale=None, idx=[idx])[0]))
-            plt.title('mask boundaries')
+            #plt.subplot(324)
+            #plt.imshow(np.squeeze(self.get_mask_boundaries(scale=None, idx=[idx])[0]))
+            #plt.title('mask boundaries')
+            if self.images is not None:
+                _img=copy.deepcopy(self.images[idx])
+                _img_b=self.get_mask_boundaries(scale=None, idx=[idx])[0].astype(np.bool)
+                _img_b.shape=_img_b.shape[:2]
+                _img[_img_b]=(255,0,0)
+                plt.subplot(324)
+                plt.imshow(_img)
+                plt.title('masked image')
         if not self.pred is None:
-            plt.subplot(235)
+            plt.subplot(325)
             plt.imshow(np.squeeze(self.pred[idx]))
             plt.title('prediction')
+            if self.images is not None:
+                _img=copy.deepcopy(self.images[idx])
+                _img_b=skimage.segmentation.find_boundaries(self.pred[idx])
+                _img_b.shape=_img_b.shape[:2]
+                _img[_img_b]=(255,0,0)
+                plt.subplot(326)
+                plt.imshow(_img)
+                plt.title('masked image (pred)')
             if self.masks is not None:
-                plt.subplot(236)
+                plt.subplot(322)
                 plt.imshow(np.squeeze((self.pred[idx]>0).astype(np.int)*2 + (self.masks[idx]>0).astype(np.int)))
-                plt.title('diff map (tbd)')
-        plt.subplots_adjust(top=0.92, bottom=0.08, left=0.10, right=0.95, hspace=0.25,
-                        wspace=0.35)
+                plt.title('diff map')
+        plt.subplots_adjust(top=0.9, bottom=0.08, left=0.10, right=0.95, hspace=0.35,wspace=0.25)
+
+
+        #plt.figure(figsize=(18, 12), dpi= 80, facecolor='w', edgecolor='k')
         plt.show()
 
-    def add_pred(self, pred):
+    def add_predictions(self, model):
+        pred=model.predict(self)
         self.pred=pred
-        scores=np.zeros((len(self.pred),3), dtype=np.float)
+        scores=np.zeros((len(self.pred),12), dtype=np.float)
+        nuc_scores=[]
         if self.masks is not None:
-            for i in range(len(pred)):
-                scores[i, 0] = iou_score(self.masks[i], self.pred[i])
-                scores[i, 1] = iou_score(self.masks[i], self.pred[i], th=[.5])
-                scores[i, 2] = iou_score(self.masks[i], self.pred[i], th=[.95])
-
-            self.features['iou_score']=scores[:, 0]
-            self.features['iou_th50'] = scores[:, 1]
-            self.features['iou_th95'] = scores[:, 2]
+            print("computing scores... ")
+            for i in tqdm.tqdm(range(len(pred))):
+                scores[i, 1] = iou_score(self.masks[i], self.pred[i])
+                scores[i, 0] = iou((self.masks[i]>0).astype(np.int), (self.pred[i]>0).astype(np.int))[0]
+                for j, th in enumerate(np.arange(.5,1,.05)):
+                    scores[i, j+2] = iou_score(self.masks[i], self.pred[i], th=[th])
+                nuc_scores += iou(truth=self.masks[i], pred=self.pred[i]).tolist()
+            colnames=['iou_fg', 'iou_score'] + ['iou_th'+str(th) for th in np.arange(50,100,5)]
+            self.features=pd.concat([self.features, pd.DataFrame(scores, columns=colnames)], axis=1)
+            self.nuc_features=pd.concat([self.nuc_features, pd.DataFrame({'iou': nuc_scores}) ], axis=1)
 
     def write_submission(self, file_name):
 
         if self.pred is None:
-            warnings.warn("no labeled prediction found")
+            warnings.warn("no prediction found")
             return 1
 
         # Run-length encoding stolen from https://www.kaggle.com/rakhlin/fast-run-length-encoding-python
