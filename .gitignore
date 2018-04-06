@@ -4,3 +4,4 @@ input/
 __pycache__/
 venv/
 *h5
+submission*csv
