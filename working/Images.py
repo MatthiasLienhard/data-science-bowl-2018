@@ -224,17 +224,25 @@ class Images(object):
     def add_predictions(self, model):
         pred=model.predict(self)
         self.pred=pred
-        scores=np.zeros((len(self.pred),12), dtype=np.float)
+        scores=np.zeros((len(self.pred),14), dtype=np.float)
         nuc_scores=[]
+
         if self.masks is not None:
             print("computing scores... ")
             for i in tqdm.tqdm(range(len(pred))):
-                scores[i, 1] = iou_score(self.masks[i], self.pred[i])
-                scores[i, 0] = iou((self.masks[i]>0).astype(np.int), (self.pred[i]>0).astype(np.int))[0]
-                for j, th in enumerate(np.arange(.5,1,.05)):
-                    scores[i, j+2] = iou_score(self.masks[i], self.pred[i], th=[th])
+                scores[i, 0] = np.max(self.pred[i])
+                props=skimage.measure.regionprops(self.pred[i])
+                #b_size=[p.perimeter for p in props]
+                a_size=[p.area for p in props]
+                scores[i, 1] = np.mean(self.pred[i])
+                scores[i, 2] = iou((self.masks[i]>0).astype(np.int), (self.pred[i]>0).astype(np.int))[0]
+                #scores[i, 3] = iou_score(self.masks[i], self.pred[i])
+                #for j, th in enumerate(np.arange(.5,1,.05)):
+                #    scores[i, j+3] = iou_score(self.masks[i], self.pred[i], th=[th])
+                scores[i, range(4,14)]= iou_score(self.masks[i], self.pred[i])
+                scores[i, 3]= np.mean(scores[i, range(4,14)])
                 nuc_scores += iou(truth=self.masks[i], pred=self.pred[i]).tolist()
-            colnames=['iou_fg', 'iou_score'] + ['iou_th'+str(th) for th in np.arange(50,100,5)]
+            colnames=['n_pred','mean_size_pred','iou_fg', 'iou_score'] + ['iou_th'+str(th) for th in np.arange(50,100,5)]
             self.features=pd.concat([self.features, pd.DataFrame(scores, columns=colnames)], axis=1)
             self.nuc_features=pd.concat([self.nuc_features, pd.DataFrame({'iou': nuc_scores}) ], axis=1)
 
@@ -299,7 +307,7 @@ def iou(truth, pred):
             pred_c=0
             warnings.warn("found mask of size 0")
         else:
-            pred_c=np.argmax(np.bincount(pred_c)) #majoritiy vote... is this always the best?+
+            pred_c=np.argmax(np.bincount(pred_c)) #majoritiy vote
         #print(pred_c)
         if pred_c > 0:
             isect=np.sum(np.logical_and(truth==truth_c, pred==pred_c))
@@ -320,12 +328,12 @@ def iou_score(truth, pred, th=np.arange(.5,1,.05)):
         # the average over all image should correspond to the score used by kaggle
     iou_vals=iou(truth, pred)
     mean_iou=[]
-    n_truth=len(np.unique(truth))-1
-    n_pred=len(np.unique(pred))-1
-    for th_ in th :
-        true_pos=np.sum(iou_vals>th_)
+    n_truth=np.max(truth)#len(np.unique(truth))-1
+    n_pred=np.max(truth)#len(np.unique(pred))-1
+    for _th in th :
+        true_pos=np.sum(iou_vals>_th)
         mean_iou.append(true_pos/(n_truth + n_pred - true_pos))
-    return(np.mean(mean_iou))
+    return(mean_iou)
 
 
 

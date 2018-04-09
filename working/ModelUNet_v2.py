@@ -91,7 +91,7 @@ class ModelUNet(object): #maybe define prototype?
         outputs = Conv2D(1, (1, 1), activation='sigmoid') (c9)
 
         model = Model(inputs=[inputs], outputs=[outputs])
-        model.compile(optimizer='adam', loss=iou_loss, metrics=[ModelUNet.mean_iou])
+        model.compile(optimizer='adam', loss='binary_crossentropy', metrics=[ModelUNet.mean_iou])
         #model.compile(optimizer='adam', loss='binary_crossentropy', metrics=[ModelUNet.mean_iou])
         return model
         #self.model.summary()
@@ -107,11 +107,11 @@ class ModelUNet(object): #maybe define prototype?
         if os.path.isfile(self.area_model_file):
             print("found area model file "+self.area_model_file)
             self.trained_area=True
-            self.area_model=load_model(self.area_model_file, custom_objects={'mean_iou': ModelUNet.mean_iou,'iou_loss':iou_loss})
+            self.area_model=load_model(self.area_model_file, custom_objects={'mean_iou': ModelUNet.mean_iou})
         if os.path.isfile(self.boundary_model_file):
             print("found boundary model file "+self.boundary_model_file)
             self.trained_boundary=True
-            self.boundary_model=load_model(self.boundary_model_file, custom_objects={'mean_iou': ModelUNet.mean_iou,'iou_loss':iou_loss})
+            self.boundary_model=load_model(self.boundary_model_file, custom_objects={'mean_iou': ModelUNet.mean_iou})
         if self.trained_area and self.trained_boundary:
             self.trained=True
             self.shape=self.area_model.input_shape[1:4]
@@ -141,7 +141,7 @@ class ModelUNet(object): #maybe define prototype?
                         validation_split=0.1, batch_size=16, epochs=50,
                         callbacks=[earlystopper, checkpointer])
             self.trained_area=True
-            self.area_model = load_model(self.area_model_file, custom_objects={'mean_iou': ModelUNet.mean_iou,'iou_loss':iou_loss})
+            self.area_model = load_model(self.area_model_file, custom_objects={'mean_iou': ModelUNet.mean_iou,})
     def fit_boundary_model(self, train:Images, force=False):
         if not self.trained_boundary or force:
             self.boundary_model=ModelUNet.init_model(self.shape)
@@ -154,11 +154,11 @@ class ModelUNet(object): #maybe define prototype?
             self.trained_boundary=True
             # not sure whether this is required
             # but the intention is when last training epoche was not optimal, the saved model should be better than
-            self.boundary_model = load_model(self.boundary_model_file, custom_objects={'mean_iou': ModelUNet.mean_iou,'iou_loss':iou_loss})
+            self.boundary_model = load_model(self.boundary_model_file, custom_objects={'mean_iou': ModelUNet.mean_iou})
 
     def predict_area(self, img:Images, th=None):
         if self.trained_area:
-            #self.area_model = load_model(self.area_model_file, custom_objects={'mean_iou': ModelUNet.mean_iou,'iou_loss':iou_loss})
+            #self.area_model = load_model(self.area_model_file, custom_objects={'mean_iou': ModelUNet.mean_iou})
             preds = self.area_model.predict(img.get_images(self.shape[:2]), verbose=2)
             if not th is None:
                 # Threshold predictions

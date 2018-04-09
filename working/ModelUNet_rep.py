@@ -13,7 +13,7 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras import backend as K
 import skimage.morphology
 import tensorflow as tf
-
+import cv2
 
 class ModelUNet(object): #maybe define prototype?
     @staticmethod
@@ -91,37 +91,38 @@ class ModelUNet(object): #maybe define prototype?
         #self.model.summary()
 
 
-    def __init__(self, shape=(128,128,3), m_file="model_unet_rep.h5"):
-        if os.path.isfile(m_file):
+    def __init__(self, shape=(128,128,3), name="model_unet_v1"):
+        self.model_file=name+".h5"
+        if os.path.isfile(self.model_file):
             print("found model file")
             self.trained=True
-            self.model=load_model(m_file, custom_objects={'mean_iou': ModelUNet.mean_iou,'iou_loss':iou_loss})
+            self.model=load_model(self.model_file, custom_objects={'mean_iou': ModelUNet.mean_iou,'iou_loss':iou_loss})
             self.shape=self.model.input_shape[1:4]
         else:
             # make new model
             self.shape=shape
             self.trained=False
             
-        self.m_file=m_file
+
         self.fit_history=None
 
     def fit_model(self, train:Images):
         self.model=ModelUNet.init_model(self.shape)
         earlystopper = EarlyStopping(patience=5, verbose=1)
-        checkpointer = ModelCheckpoint(self.m_file, verbose=1, save_best_only=True)
+        checkpointer = ModelCheckpoint(self.model_file, verbose=1, save_best_only=True)
         self.fit_history = self.model.fit(train.get_images(self.shape[:2]),
                     train.get_masks(self.shape[:2],labeled=False),
                     validation_split=0.1, batch_size=16, epochs=50,
                     callbacks=[earlystopper, checkpointer])
         self.trained=True
 
-    def predict_unlabeld(self, img:Images, th=None):
+    def predict_unlabeled(self, img:Images, th=None):
         if self.trained:
-            self.model = load_model(self.m_file, custom_objects={'mean_iou': ModelUNet.mean_iou,'iou_loss':iou_loss})
+            self.model = load_model(self.model_file, custom_objects={'mean_iou': ModelUNet.mean_iou,'iou_loss':iou_loss})
             preds = self.model.predict(img.get_images(self.shape[:2]), verbose=2)
             if not th is None:
                 # Threshold predictions
-                preds = (preds > th).astype(np.bool)
+                preds = (preds > th)
                 # todo: da kann man sich noch was besseres einfallen lassen
         else:
             preds=None
@@ -139,6 +140,25 @@ class ModelUNet(object): #maybe define prototype?
             lab_pred.append(skimage.morphology.label(unl_pred[i] > th))
         return lab_pred
    
+    def predict(self, img:Images, th=0.5,scale=True):
+
+        print('predicting foreground...')
+        pa=self.predict_unlabeled(img).reshape((-1,)+self.shape[:2])
+        print('labeling predictions...')
+        pred=self.label(pa, th)
+        if not scale:
+            pred=[np.expand_dims(x,axis=2) for x in pred]
+            return pred
+        # else:
+        pred_scaled=[]
+        for i, out_shape in img.features[['size_y', 'size_x']].iterrows():
+            pred_scaled.append(cv2.resize(pred[i], tuple(out_shape) ,interpolation=cv2.INTER_NEAREST))
+            # nearest to avoid averaging between labels
+        pred_scaled=[np.expand_dims(x,axis=2) for x in pred_scaled]
+        pred_scaled=[skimage.segmentation.relabel_sequential(x)[0] for x in pred_scaled]
+        #small lables might have been lost
+
+        return(pred_scaled)
 
 def iou_loss(y_true,y_pred):
     #stolen from 
@@ -173,6 +193,6 @@ if __name__=='__main__':
     train.load_images()
     print("reading training masks")
     train.load_masks()
-    model=ModelUNet('unet_v1_256x256.h5')
-    train.pred=model.predict_unlabeld(train, th=None)
+    model=ModelUNet('unet_v1_256x256')
+    train.pred=model.predict_unlabeled(train, th=None)
     train.show_image()

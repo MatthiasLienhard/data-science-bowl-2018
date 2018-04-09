@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 
 import copy
 
-import plotly #plan to do interactive plots
+import plotly_test #plan to do interactive plots
 
 
 # In[2]:

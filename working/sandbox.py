@@ -5,6 +5,8 @@ import skimage.filters
 
 import Images
 import ModelUNet_v2 #version 2 learns areas and boundaries of nuclei
+import ModelUNet_rep #version 2 learns areas and boundaries of nuclei
+
 import matplotlib.pyplot as plt
 import scipy.ndimage
 import skimage.feature
@@ -20,11 +22,29 @@ train=train.subset(idx=range(20))
 train.load_images()
 train.load_masks()
 train.features.head()
-
+train1=copy.deepcopy(train)
 model=ModelUNet_v2.ModelUNet(name=model_name, shape=model_shape)
 
+model1=ModelUNet_rep.ModelUNet(name="unet_v1_256x256")
+
 train.add_predictions(model)
+
 print("expected LB score(train): {}".format(np.mean(train.features['iou_score'])))
+train1.add_predictions(model1)
+print("expected LB score(train): {}".format(np.mean(train1.features['iou_score'])))
+
+
+pa=model.predict_area(train)
+pb=model.predict_boundary(train)
+
+idx=18
+train.show_image(idx)
+
+plt.imshow(pa[idx].reshape(pa[idx].shape[:2]))
+plt.show()
+
+
+
 
 
 
