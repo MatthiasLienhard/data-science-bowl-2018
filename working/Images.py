@@ -221,8 +221,8 @@ class Images(object):
         #plt.figure(figsize=(18, 12), dpi= 80, facecolor='w', edgecolor='k')
         plt.show()
 
-    def add_predictions(self, model):
-        pred=model.predict(self)
+    def add_predictions(self, model,**kwargs):
+        pred=model.predict(self, **kwargs)
         self.pred=pred
         scores=np.zeros((len(self.pred),14), dtype=np.float)
         nuc_scores=[]

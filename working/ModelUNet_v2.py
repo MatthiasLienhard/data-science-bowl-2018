@@ -182,14 +182,14 @@ class ModelUNet(object): #maybe define prototype?
             warnings.warn('Model not trained yet')
         return preds
 
-    def predict(self, img:Images, th=0.5,scale=True):
+    def predict(self, img:Images,  th=0.5,boundary_height=0.05,scale=True):
 
         print('predicting area...')
         pa=self.predict_area(img).reshape((-1,)+self.shape[:2])
         print('predicting boundaries...')
         pb=self.predict_boundary(img).reshape((-1,)+self.shape[:2])
         print('labeling predictions...')
-        pred=self.label(pa,pb, th)
+        pred=self.label(pa,pb, th,boundary_height)
         if not scale:
             pred=[np.expand_dims(x,axis=2) for x in pred]
             return pred
@@ -209,18 +209,22 @@ class ModelUNet(object): #maybe define prototype?
 
 
 
-    def label(self, pa, pb,th=0.5):
+    def label(self, pa, pb,th=0.5, boundary_height=0.05):
 
         lab_pred=np.zeros_like(pa, dtype=np.uint)
         for i in tqdm.tqdm(range(pa.shape[0])):
             #lab_pred.append(skimage.morphology.label(unl_pred[i] > th))
 
             #get at least one pixel in each nuclei that is not connected to another
-            starts=skimage.feature.peak_local_max(-pb[i], indices=False, footprint=np.ones((3, 3)), labels=pa[i]>th)
+            #starts=skimage.feature.peak_local_max(-pb[i], indices=False, footprint=np.ones((3, 3)), labels=scipy.ndimage.label(pa[i]>th)[0])
+            starts=skimage.morphology.h_maxima((1-pb[i]), h=boundary_height)
+            # h=.01: a closed seperation of at least 1% boundary probability required
+            starts[pa[i]<th]=0 #no peaks outside mask
+
             #label these starts
             starts = scipy.ndimage.label(starts)[0]
-            lab_pred[i] = skimage.morphology.watershed(pb[i], starts, mask=pa[i])
-            lab_pred[i][pa[i]<th]=0
+            lab_pred[i] = skimage.morphology.watershed(pb[i], starts, mask=pa[i]>th)
+            #lab_pred[i][pa[i]<th]=0
             lab_pred[i]=skimage.segmentation.relabel_sequential(lab_pred[i])[0]
             #lab_pred[i]=skimage.morphology.remove_small_objects(lab_pred[i].astype(int),min_size=4)
 
