@@ -196,7 +196,7 @@ class ModelUNet(object): #maybe define prototype?
         # else:
         pred_scaled=[]
         for i, out_shape in img.features[['size_y', 'size_x']].iterrows():
-            pred_scaled.append(cv2.resize(pred[i], tuple(out_shape) ,interpolation=cv2.INTER_NEAREST))
+            pred_scaled.append(cv2.resize(pred[i].astype(dtype=np.int16), tuple(out_shape) ,interpolation=cv2.INTER_NEAREST))
             # nearest to avoid averaging between labels
         pred_scaled=[np.expand_dims(x,axis=2) for x in pred_scaled]
         pred_scaled=[skimage.segmentation.relabel_sequential(x)[0] for x in pred_scaled]
@@ -214,7 +214,7 @@ class ModelUNet(object): #maybe define prototype?
         lab_pred=np.zeros_like(pa, dtype=np.uint)
         for i in tqdm.tqdm(range(pa.shape[0])):
             #lab_pred.append(skimage.morphology.label(unl_pred[i] > th))
-
+                        
             #get at least one pixel in each nuclei that is not connected to another
             #starts=skimage.feature.peak_local_max(-pb[i], indices=False, footprint=np.ones((3, 3)), labels=scipy.ndimage.label(pa[i]>th)[0])
             starts=skimage.morphology.h_maxima((1-pb[i]), h=boundary_height)
