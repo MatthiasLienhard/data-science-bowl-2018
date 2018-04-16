@@ -182,7 +182,7 @@ class ModelUNet(object): #maybe define prototype?
             warnings.warn('Model not trained yet')
         return preds
 
-    def predict(self, img:Images,  th=0.5,boundary_height=0.05,scale=True):
+    def predict(self, img:Images,  th=0.5,boundary_height=0.05,scale=True, chull=False):
 
         print('predicting area...')
         pa=self.predict_area(img).reshape((-1,)+self.shape[:2])
@@ -190,6 +190,14 @@ class ModelUNet(object): #maybe define prototype?
         pb=self.predict_boundary(img).reshape((-1,)+self.shape[:2])
         print('labeling predictions...')
         pred=self.label(pa,pb, th,boundary_height)
+        if chull:
+            print('getting convex hull')
+            chull=np.array([skimage.morphology.convex_hull_object(x) for x in pred])
+            print('relabeling...')
+            pred=self.label(chull,pb, th,boundary_height)
+
+
+
         if not scale:
             pred=[np.expand_dims(x,axis=2) for x in pred]
             return pred
@@ -201,7 +209,6 @@ class ModelUNet(object): #maybe define prototype?
         pred_scaled=[np.expand_dims(x,axis=2) for x in pred_scaled]
         pred_scaled=[skimage.segmentation.relabel_sequential(x)[0] for x in pred_scaled]
         #small lables might have been lost
-
         return(pred_scaled)
 
 
@@ -227,6 +234,7 @@ class ModelUNet(object): #maybe define prototype?
             #lab_pred[i][pa[i]<th]=0
             lab_pred[i]=skimage.segmentation.relabel_sequential(lab_pred[i])[0]
             #lab_pred[i]=skimage.morphology.remove_small_objects(lab_pred[i].astype(int),min_size=4)
+
 
         return lab_pred
    
